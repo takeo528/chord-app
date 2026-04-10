@@ -1,0 +1,1078 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CHORD — バンド共有アプリ</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Noto+Sans+JP:wght@400;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d0d0d;
+    --surface: #161616;
+    --surface2: #1e1e1e;
+    --border: #2a2a2a;
+    --accent: #e8ff47;
+    --accent2: #ff4757;
+    --text: #f0f0f0;
+    --muted: #666;
+    --green: #39d353;
+    --blue: #4fc3f7;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family:'Noto Sans JP',sans-serif; min-height:100vh; }
+
+  /* LOCK */
+  #lock-screen {
+    position:fixed; inset:0; background:var(--bg);
+    display:flex; align-items:center; justify-content:center;
+    z-index:999; flex-direction:column; gap:32px;
+  }
+  .lock-logo { font-family:'Bebas Neue',sans-serif; font-size:48px; letter-spacing:10px; color:var(--accent); }
+  .lock-subtitle { font-family:'Space Mono',monospace; font-size:12px; color:var(--muted); letter-spacing:2px; margin-top:-20px; }
+  .pin-dots { display:flex; gap:16px; margin-bottom:8px; }
+  .pin-dot { width:14px; height:14px; border-radius:50%; border:2px solid var(--border); background:transparent; transition:all 0.15s; }
+  .pin-dot.filled { background:var(--accent); border-color:var(--accent); }
+  .pin-dot.error { background:var(--accent2); border-color:var(--accent2); animation:shake 0.3s ease; }
+  @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)} }
+  .numpad { display:grid; grid-template-columns:repeat(3,72px); gap:10px; }
+  .num-btn {
+    width:72px; height:72px; border-radius:50%; background:var(--surface);
+    border:1px solid var(--border); color:var(--text); font-size:22px;
+    font-family:'Bebas Neue',sans-serif; letter-spacing:1px;
+    cursor:pointer; transition:all 0.15s; display:flex; align-items:center; justify-content:center;
+  }
+  .num-btn:hover { background:var(--surface2); border-color:#3a3a3a; transform:scale(1.05); }
+  .num-btn:active { transform:scale(0.95); }
+  .num-btn.del { font-size:16px; color:var(--muted); }
+  .lock-error { font-family:'Space Mono',monospace; font-size:12px; color:var(--accent2); height:16px; text-align:center; }
+
+  /* HEADER */
+  header {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:16px 28px; border-bottom:1px solid var(--border);
+    position:sticky; top:0; background:rgba(13,13,13,0.95);
+    backdrop-filter:blur(12px); z-index:100;
+  }
+  .logo { font-family:'Bebas Neue',sans-serif; font-size:28px; letter-spacing:6px; color:var(--accent); cursor:pointer; user-select:none; }
+  .header-right { display:flex; align-items:center; gap:12px; }
+  .band-badge { background:var(--surface2); border:1px solid var(--border); padding:6px 14px; border-radius:20px; font-size:12px; color:var(--muted); font-family:'Noto Sans JP',sans-serif; cursor:pointer; transition:border-color 0.2s; max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .band-badge:hover { border-color:var(--accent); }
+  .band-badge span { color:var(--text); font-weight:700; }
+  .lock-btn { background:none; border:1px solid var(--border); border-radius:6px; color:var(--muted); padding:6px 10px; font-size:13px; cursor:pointer; transition:all 0.15s; }
+  .lock-btn:hover { border-color:var(--accent2); color:var(--accent2); }
+
+  /* TABS */
+  .tabs { display:flex; padding:0 28px; border-bottom:1px solid var(--border); background:var(--surface); }
+  .tab { padding:14px 22px; cursor:pointer; font-size:13px; font-weight:700; color:var(--muted); border-bottom:2px solid transparent; transition:all 0.2s; }
+  .tab.active { color:var(--accent); border-bottom-color:var(--accent); }
+  .tab:hover:not(.active) { color:var(--text); }
+  .panel { display:none; padding:28px; }
+  .panel.active { display:block; }
+  .section-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
+  .section-title { font-family:'Bebas Neue',sans-serif; font-size:22px; letter-spacing:3px; color:var(--accent); }
+
+  .btn { background:var(--accent); color:#0d0d0d; border:none; padding:9px 18px; border-radius:6px; font-weight:700; font-size:12px; cursor:pointer; letter-spacing:1px; transition:transform 0.15s, opacity 0.15s; white-space:nowrap; }
+  .btn:hover { opacity:0.85; transform:translateY(-1px); }
+  .btn.secondary { background:transparent; color:var(--accent); border:1px solid var(--accent); }
+  .btn.danger { background:transparent; color:var(--accent2); border:1px solid var(--accent2); }
+  .btn.danger:hover { background:var(--accent2); color:#fff; }
+
+  /* SONG GRID */
+  .song-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:16px; }
+  .song-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:20px; cursor:pointer; transition:all 0.2s; position:relative; overflow:hidden; }
+  .song-card::before { content:''; position:absolute; top:0; left:0; width:3px; height:100%; background:var(--accent); opacity:0; transition:opacity 0.2s; }
+  .song-card:hover { border-color:#3a3a3a; transform:translateY(-2px); }
+  .song-card:hover::before { opacity:1; }
+  .song-card h3 { font-size:16px; margin-bottom:6px; padding-right:60px; }
+  .song-meta { font-size:11px; color:var(--muted); font-family:'Space Mono',monospace; display:flex; gap:10px; margin-bottom:12px; flex-wrap:wrap; }
+  .chord-preview { display:flex; gap:6px; flex-wrap:wrap; }
+  .chord-chip { background:var(--surface2); border:1px solid var(--border); border-radius:4px; padding:3px 8px; font-size:12px; font-family:'Space Mono',monospace; color:var(--accent); font-weight:700; }
+  .capo-badge { background:rgba(79,195,247,0.12); border:1px solid rgba(79,195,247,0.3); color:var(--blue); border-radius:4px; padding:2px 8px; font-size:11px; font-family:'Space Mono',monospace; }
+  .card-actions { position:absolute; top:12px; right:12px; display:flex; gap:6px; opacity:0; transition:opacity 0.2s; }
+  .song-card:hover .card-actions { opacity:1; }
+  @media (hover: none) { .card-actions { opacity:1; } }
+  .icon-btn { background:var(--surface2); border:1px solid var(--border); border-radius:5px; width:28px; height:28px; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:12px; transition:all 0.15s; color:var(--muted); }
+  .icon-btn:hover { border-color:var(--accent); color:var(--accent); }
+  .icon-btn.del:hover { border-color:var(--accent2); color:var(--accent2); }
+
+  /* LOADING */
+  .loading-state { display:flex; align-items:center; justify-content:center; padding:60px; color:var(--muted); font-family:'Space Mono',monospace; font-size:13px; gap:10px; }
+  .spinner { width:18px; height:18px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.8s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  /* DETAIL */
+  .detail-view { display:none; }
+  .detail-view.active { display:block; }
+  .back-btn { background:none; border:none; color:var(--muted); cursor:pointer; font-size:13px; display:flex; align-items:center; gap:6px; margin-bottom:16px; padding:0; transition:color 0.2s; }
+  .back-btn:hover { color:var(--text); }
+
+  /* DETAIL HEADER */
+  .detail-header {
+    display:flex; align-items:center; gap:12px;
+    margin-bottom:16px; flex-wrap:nowrap; overflow:hidden;
+  }
+  .detail-header-left { flex:1; min-width:0; }
+  .detail-title-text {
+    font-family:'Noto Sans JP',sans-serif; font-size:18px; font-weight:700;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    color:var(--text); letter-spacing:0.5px;
+  }
+  .detail-meta-row {
+    display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; align-items:center;
+  }
+  .meta-chip {
+    background:var(--surface2); border:1px solid var(--border);
+    border-radius:5px; padding:3px 8px;
+    font-family:'Space Mono',monospace; font-size:11px; color:var(--muted);
+    white-space:nowrap;
+  }
+  .meta-chip strong { color:var(--text); }
+  .detail-header-actions { display:flex; gap:6px; flex-shrink:0; }
+
+  /* CAPO BAR - シンプル版 */
+  .capo-bar {
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:10px; padding:14px 20px; margin-bottom:16px;
+    display:flex; align-items:center; gap:16px;
+  }
+  .capo-label { font-family:'Space Mono',monospace; font-size:12px; color:var(--muted); white-space:nowrap; }
+  .capo-stepper { display:flex; align-items:center; }
+  .capo-btn { background:var(--surface2); border:1px solid var(--border); color:var(--text); width:32px; height:32px; cursor:pointer; font-size:16px; transition:all 0.15s; display:flex; align-items:center; justify-content:center; }
+  .capo-btn:first-child { border-radius:6px 0 0 6px; }
+  .capo-btn:last-child { border-radius:0 6px 6px 0; }
+  .capo-btn:hover { background:var(--border); }
+  .capo-value { background:var(--surface2); border-top:1px solid var(--border); border-bottom:1px solid var(--border); width:44px; height:32px; display:flex; align-items:center; justify-content:center; font-family:'Bebas Neue',sans-serif; font-size:20px; color:var(--accent); user-select:none; }
+
+  /* SHEET */
+  .sheet-wrap { background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden; margin-bottom:20px; }
+  .sheet-toolbar { display:flex; align-items:center; justify-content:space-between; padding:14px 20px; border-bottom:1px solid var(--border); background:var(--surface2); }
+  .sheet-label { font-family:'Bebas Neue',sans-serif; font-size:14px; letter-spacing:2px; color:var(--muted); }
+  .sheet-body { padding:24px 28px; }
+  .sheet-section { margin-bottom:32px; }
+  .sheet-section-name { font-family:'Space Mono',monospace; font-size:10px; font-weight:700; letter-spacing:3px; color:var(--accent); background:rgba(232,255,71,0.08); border-left:2px solid var(--accent); padding:4px 10px; margin-bottom:16px; display:inline-block; border-radius:0 4px 4px 0; }
+
+  /* ===== U-FRET式 コード+歌詞 ===== */
+  .chord-line-wrap {
+    display:flex;
+    flex-wrap:wrap;
+    align-items:flex-end;
+    margin-bottom:20px;
+    line-height:1;
+  }
+  .chord-unit {
+    display:inline-flex;
+    flex-direction:column;
+    align-items:flex-start;
+  }
+  .chord-name {
+    font-family:'Space Mono',monospace;
+    font-size:13px;
+    font-weight:700;
+    color:var(--accent);
+    background:rgba(232,255,71,0.08);
+    border-radius:3px;
+    padding:1px 4px;
+    margin-bottom:3px;
+    white-space:nowrap;
+    min-height:20px;
+    line-height:1.4;
+  }
+  .chord-name.transposed { color:var(--blue); background:rgba(79,195,247,0.08); }
+  .chord-name.empty { visibility:hidden; }
+  .chord-char {
+    font-size:14px;
+    line-height:1.7;
+    color:var(--text);
+    white-space:pre;
+  }
+
+  /* AUDIO */
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:20px; }
+  .card-title { font-family:'Bebas Neue',sans-serif; font-size:16px; letter-spacing:2px; color:var(--muted); margin-bottom:14px; }
+  .audio-list { display:flex; flex-direction:column; gap:10px; }
+  .audio-item { background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:12px 16px; display:flex; align-items:center; gap:12px; }
+  .play-btn { width:34px; height:34px; border-radius:50%; background:var(--accent); border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:transform 0.15s; color:#0d0d0d; font-size:12px; }
+  .play-btn:hover { transform:scale(1.08); }
+  .audio-info { flex:1; }
+  .audio-name { font-size:13px; font-weight:700; }
+  .audio-meta { font-size:11px; color:var(--muted); font-family:'Space Mono',monospace; }
+  .upload-area { border:2px dashed var(--border); border-radius:8px; padding:18px; text-align:center; color:var(--muted); font-size:13px; cursor:pointer; transition:border-color 0.2s; margin-top:10px; }
+  .upload-area:hover { border-color:var(--accent); color:var(--accent); }
+  .meta-chips { display:flex; gap:8px; flex-wrap:wrap; }
+  .meta-chip { background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:5px 12px; font-family:'Space Mono',monospace; font-size:12px; color:var(--muted); }
+  .meta-chip strong { color:var(--text); }
+
+  /* MODALS */
+  .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:200; align-items:center; justify-content:center; backdrop-filter:blur(4px); }
+  .modal-overlay.active { display:flex; }
+  .modal { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:28px; width:90%; max-width:600px; animation:slideUp 0.25s ease; max-height:90vh; overflow-y:auto; }
+  @keyframes slideUp { from{transform:translateY(20px);opacity:0} to{transform:translateY(0);opacity:1} }
+  .modal h2 { font-family:'Bebas Neue',sans-serif; font-size:22px; letter-spacing:3px; color:var(--accent); margin-bottom:16px; }
+  .modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:20px; }
+
+  /* FORM */
+  .form-group { margin-bottom:14px; }
+  .form-label { font-size:11px; font-weight:700; color:var(--muted); letter-spacing:1px; margin-bottom:6px; display:block; }
+  .form-input { width:100%; background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:10px 12px; color:var(--text); font-family:'Space Mono',monospace; font-size:13px; transition:border-color 0.2s; outline:none; }
+  .form-input:focus { border-color:var(--accent); }
+  textarea.form-input { resize:vertical; font-family:'Noto Sans JP',sans-serif; font-size:14px; line-height:1.8; }
+  .hint { font-size:11px; color:var(--muted); margin-top:4px; line-height:1.6; }
+  .hint code { background:var(--surface); border:1px solid var(--border); border-radius:3px; padding:1px 5px; font-family:'Space Mono',monospace; color:var(--accent); font-size:11px; }
+
+  /* SECTION EDITOR */
+  .sec-row { background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:16px; margin-bottom:10px; }
+  .sec-row-header { display:flex; gap:8px; align-items:center; margin-bottom:12px; }
+  .sec-name-input { flex:1; }
+  .remove-btn { background:none; border:none; color:var(--muted); cursor:pointer; font-size:16px; padding:0 4px; line-height:1; transition:color 0.15s; }
+  .remove-btn:hover { color:var(--accent2); }
+  .add-sec-btn { background:none; border:1px dashed var(--border); border-radius:6px; color:var(--muted); width:100%; padding:10px; cursor:pointer; font-size:13px; transition:all 0.2s; margin-top:4px; }
+  .add-sec-btn:hover { border-color:var(--accent); color:var(--accent); }
+
+  /* CHORD EDITOR PREVIEW */
+  .chord-editor-preview {
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:6px; padding:12px 14px; margin-top:8px;
+    min-height:60px;
+  }
+  .preview-label { font-size:10px; color:var(--muted); font-family:'Space Mono',monospace; letter-spacing:1px; margin-bottom:8px; }
+
+  /* DELETE */
+  .delete-confirm-text { font-size:14px; color:var(--text); margin-bottom:20px; line-height:1.8; }
+  .delete-confirm-text strong { color:var(--accent2); }
+
+  /* SETTINGS */
+  .settings-section { margin-bottom:28px; }
+  .settings-section-title { font-family:'Bebas Neue',sans-serif; font-size:16px; letter-spacing:2px; color:var(--muted); margin-bottom:14px; border-bottom:1px solid var(--border); padding-bottom:8px; }
+  .settings-row { display:flex; align-items:center; justify-content:space-between; padding:12px 0; border-bottom:1px solid var(--border); }
+  .settings-row:last-child { border-bottom:none; }
+  .settings-label { font-size:13px; }
+  .settings-desc { font-size:11px; color:var(--muted); margin-top:2px; }
+
+  /* CHANGE PIN */
+  .change-pin-numpad { display:grid; grid-template-columns:repeat(3,64px); gap:8px; margin:16px auto 0; width:fit-content; }
+  .change-pin-numpad .num-btn { width:64px; height:64px; font-size:20px; }
+
+  /* SPOTIFY */
+  .spotify-section { margin-bottom:20px; }
+  .spotify-section .card-title { margin-bottom:12px; }
+  .spotify-list { display:flex; flex-direction:column; gap:10px; }
+  .spotify-item { position:relative; }
+  .spotify-item iframe { border-radius:10px; width:100%; display:block; }
+  .spotify-label { font-size:11px; color:var(--muted); font-family:'Space Mono',monospace; margin-bottom:6px; }
+
+  /* SPOTIFY EDITOR in modal */
+  .spotify-link-row { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+  .spotify-link-row .form-input { flex:1; }
+  .add-spotify-btn { background:none; border:1px dashed var(--border); border-radius:6px; color:var(--muted); width:100%; padding:8px; cursor:pointer; font-size:12px; transition:all 0.2s; margin-top:4px; }
+  .add-spotify-btn:hover { border-color:#1DB954; color:#1DB954; }
+
+  /* TOAST */
+  #toast { position:fixed; bottom:28px; left:50%; transform:translateX(-50%) translateY(20px); background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:10px 20px; font-family:'Space Mono',monospace; font-size:13px; opacity:0; transition:all 0.25s; z-index:500; white-space:nowrap; pointer-events:none; }
+  #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  #toast.success { border-color:var(--green); color:var(--green); }
+  #toast.error { border-color:var(--accent2); color:var(--accent2); }
+</style>
+</head>
+<body>
+
+<!-- LOCK SCREEN -->
+<div id="lock-screen">
+  <div>
+    <div class="lock-logo">CHORD</div>
+    <div class="lock-subtitle">BAND SHARING APP</div>
+  </div>
+  <div class="pin-dots" id="pin-dots">
+    <div class="pin-dot" id="dot-0"></div>
+    <div class="pin-dot" id="dot-1"></div>
+    <div class="pin-dot" id="dot-2"></div>
+    <div class="pin-dot" id="dot-3"></div>
+  </div>
+  <div class="lock-error" id="lock-error"></div>
+  <div class="numpad">
+    <button class="num-btn" onclick="pinInput('1')">1</button>
+    <button class="num-btn" onclick="pinInput('2')">2</button>
+    <button class="num-btn" onclick="pinInput('3')">3</button>
+    <button class="num-btn" onclick="pinInput('4')">4</button>
+    <button class="num-btn" onclick="pinInput('5')">5</button>
+    <button class="num-btn" onclick="pinInput('6')">6</button>
+    <button class="num-btn" onclick="pinInput('7')">7</button>
+    <button class="num-btn" onclick="pinInput('8')">8</button>
+    <button class="num-btn" onclick="pinInput('9')">9</button>
+    <button class="num-btn" style="visibility:hidden"></button>
+    <button class="num-btn" onclick="pinInput('0')">0</button>
+    <button class="num-btn del" onclick="pinDelete()">⌫</button>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="main-app" style="display:none">
+
+<header>
+  <div class="logo" onclick="backToList()">CHORD</div>
+  <div class="header-right">
+    <div class="band-badge" onclick="openBandNameModal()" title="バンド名を編集"><span id="band-name-display">My Band</span></div>
+    <button class="lock-btn" onclick="lockApp()">🔒</button>
+  </div>
+</header>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('songs',this)">🎵 曲一覧</div>
+  <div class="tab" onclick="switchTab('settings',this)">⚙️ 設定</div>
+</div>
+
+<!-- SONGS TAB -->
+<div id="tab-songs" class="panel active">
+  <div id="list-view">
+    <div class="section-header">
+      <div class="section-title">曲一覧</div>
+      <button class="btn" onclick="openAddModal()">＋ 新しい曲</button>
+    </div>
+    <div id="song-grid" class="song-grid">
+      <div class="loading-state"><div class="spinner"></div>読み込み中...</div>
+    </div>
+  </div>
+
+  <div id="detail-view" class="detail-view">
+    <button class="back-btn" onclick="backToList()">← 一覧に戻る</button>
+    <div class="detail-header">
+      <div class="detail-header-left">
+        <div class="detail-title-text" id="detail-title"></div>
+        <div class="detail-meta-row" id="detail-chips"></div>
+      </div>
+      <div class="detail-header-actions">
+        <button class="btn secondary" onclick="openEditModal()">✏️ 編集</button>
+      </div>
+    </div>
+
+    <!-- CAPO BAR シンプル版 -->
+    <div class="capo-bar">
+      <div class="capo-label">🎸 カポ</div>
+      <div class="capo-stepper">
+        <button class="capo-btn" onclick="changeCapo(-1)">−</button>
+        <div class="capo-value" id="capo-display">0</div>
+        <button class="capo-btn" onclick="changeCapo(+1)">＋</button>
+      </div>
+    </div>
+
+    <div class="sheet-wrap">
+      <div class="sheet-toolbar">
+        <div class="sheet-label">🎵 コード＋歌詞</div>
+      </div>
+      <div class="sheet-body" id="sheet-body"></div>
+    </div>
+
+    <div class="card spotify-section" id="spotify-section" style="display:none">
+      <div class="card-title">🎧 参考音源（Spotify）</div>
+      <div class="spotify-list" id="spotify-list"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🎙️ 音源・録音</div>
+      <div class="audio-list" id="audio-content"></div>
+      <div class="upload-area">＋ 音源をアップロード</div>
+    </div>
+  </div>
+</div>
+
+<!-- SETTINGS TAB -->
+<div id="tab-settings" class="panel">
+  <div class="section-header"><div class="section-title">設定</div></div>
+  <div class="settings-section">
+    <div class="settings-section-title">バンド情報</div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-label">バンド名</div>
+        <div class="settings-desc">ヘッダーに表示されるバンド名</div>
+      </div>
+      <button class="btn secondary" onclick="openBandNameModal()">編集する</button>
+    </div>
+  </div>
+  <div class="settings-section">
+    <div class="settings-section-title">セキュリティ</div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-label">PINコードを変更</div>
+        <div class="settings-desc">現在の4桁PINを変更します</div>
+      </div>
+      <button class="btn secondary" onclick="openChangePinModal()">変更する</button>
+    </div>
+  </div>
+  <div class="settings-section">
+    <div class="settings-section-title">データ</div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-label">Firebase 接続状態</div>
+        <div class="settings-desc" id="firebase-status">確認中...</div>
+      </div>
+      <div style="font-size:18px" id="firebase-status-icon">⏳</div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /main-app -->
+
+<!-- ADD/EDIT MODAL -->
+<div class="modal-overlay" id="add-modal">
+  <div class="modal">
+    <h2 id="add-modal-title">新しい曲を追加</h2>
+    <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+      <div class="form-group" style="flex:2;margin:0;min-width:140px">
+        <label class="form-label">曲名</label>
+        <input class="form-input" id="new-title" placeholder="夜明けのメロディ" style="font-family:'Noto Sans JP',sans-serif">
+      </div>
+      <div class="form-group" style="flex:1;margin:0;min-width:80px">
+        <label class="form-label">キー</label>
+        <input class="form-input" id="new-key" placeholder="Am">
+      </div>
+      <div class="form-group" style="width:80px;margin:0">
+        <label class="form-label">BPM</label>
+        <input class="form-input" id="new-bpm" placeholder="120" type="number">
+      </div>
+      <div class="form-group" style="width:80px;margin:0">
+        <label class="form-label">カポ</label>
+        <input class="form-input" id="new-capo" placeholder="0" type="number" min="0" max="11">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">🎧 Spotify参考音源リンク</label>
+      <div id="spotify-links-editor"></div>
+      <button class="add-spotify-btn" onclick="addSpotifyLink()">＋ Spotifyリンクを追加</button>
+      <div class="hint" style="margin-top:6px">SpotifyアプリやWebで曲を開き「共有 → リンクをコピー」で取得したURLを貼り付け</div>
+    </div>
+
+    <div class="form-label" style="margin-bottom:10px">セクション</div>
+    <div id="sections-editor"></div>
+    <button class="add-sec-btn" onclick="addSection()">＋ セクションを追加</button>
+
+    <div class="modal-actions">
+      <button class="btn danger" id="modal-delete-btn" onclick="openDeleteFromEdit()" style="margin-right:auto">🗑️ 削除</button>
+      <button class="btn secondary" onclick="closeModal('add-modal')">キャンセル</button>
+      <button class="btn" id="add-modal-submit" onclick="submitSong()">追加する</button>
+    </div>
+  </div>
+</div>
+
+<!-- BAND NAME MODAL -->
+<div class="modal-overlay" id="band-name-modal">
+  <div class="modal" style="max-width:360px">
+    <h2>🎸 バンド名を編集</h2>
+    <div class="form-group">
+      <label class="form-label">バンド名</label>
+      <input class="form-input" id="band-name-input" placeholder="例：The Echoes" style="font-family:'Noto Sans JP',sans-serif;font-size:15px">
+    </div>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal('band-name-modal')">キャンセル</button>
+      <button class="btn" onclick="saveBandName()">保存する</button>
+    </div>
+  </div>
+</div>
+
+<!-- DELETE MODAL -->
+<div class="modal-overlay" id="delete-modal">
+  <div class="modal" style="max-width:380px">
+    <h2>🗑️ 曲を削除</h2>
+    <p class="delete-confirm-text">「<strong id="delete-song-name"></strong>」を削除しますか？<br>この操作は取り消せません。</p>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal('delete-modal')">キャンセル</button>
+      <button class="btn danger" onclick="confirmDelete()">削除する</button>
+    </div>
+  </div>
+</div>
+
+<!-- CHANGE PIN MODAL -->
+<div class="modal-overlay" id="change-pin-modal">
+  <div class="modal" style="max-width:320px;text-align:center">
+    <h2>🔐 PINを変更</h2>
+    <div id="pin-change-step1">
+      <div style="font-size:12px;color:var(--muted);font-family:'Space Mono',monospace;margin-bottom:12px">現在のPINを入力</div>
+      <div class="pin-dots" style="justify-content:center" id="change-dots-old">
+        <div class="pin-dot" id="co-0"></div><div class="pin-dot" id="co-1"></div>
+        <div class="pin-dot" id="co-2"></div><div class="pin-dot" id="co-3"></div>
+      </div>
+      <div class="lock-error" id="change-error-old"></div>
+      <div class="change-pin-numpad">
+        <button class="num-btn" onclick="changePinInput('old','1')">1</button>
+        <button class="num-btn" onclick="changePinInput('old','2')">2</button>
+        <button class="num-btn" onclick="changePinInput('old','3')">3</button>
+        <button class="num-btn" onclick="changePinInput('old','4')">4</button>
+        <button class="num-btn" onclick="changePinInput('old','5')">5</button>
+        <button class="num-btn" onclick="changePinInput('old','6')">6</button>
+        <button class="num-btn" onclick="changePinInput('old','7')">7</button>
+        <button class="num-btn" onclick="changePinInput('old','8')">8</button>
+        <button class="num-btn" onclick="changePinInput('old','9')">9</button>
+        <button class="num-btn" style="visibility:hidden"></button>
+        <button class="num-btn" onclick="changePinInput('old','0')">0</button>
+        <button class="num-btn del" onclick="changePinDelete('old')">⌫</button>
+      </div>
+      <div style="margin-top:16px"><button class="btn secondary" onclick="closeModal('change-pin-modal')">キャンセル</button></div>
+    </div>
+    <div id="pin-change-step2" style="display:none">
+      <div style="font-size:12px;color:var(--muted);font-family:'Space Mono',monospace;margin-bottom:12px">新しいPINを入力</div>
+      <div class="pin-dots" style="justify-content:center" id="change-dots-new">
+        <div class="pin-dot" id="cn-0"></div><div class="pin-dot" id="cn-1"></div>
+        <div class="pin-dot" id="cn-2"></div><div class="pin-dot" id="cn-3"></div>
+      </div>
+      <div class="lock-error" id="change-error-new"></div>
+      <div class="change-pin-numpad">
+        <button class="num-btn" onclick="changePinInput('new','1')">1</button>
+        <button class="num-btn" onclick="changePinInput('new','2')">2</button>
+        <button class="num-btn" onclick="changePinInput('new','3')">3</button>
+        <button class="num-btn" onclick="changePinInput('new','4')">4</button>
+        <button class="num-btn" onclick="changePinInput('new','5')">5</button>
+        <button class="num-btn" onclick="changePinInput('new','6')">6</button>
+        <button class="num-btn" onclick="changePinInput('new','7')">7</button>
+        <button class="num-btn" onclick="changePinInput('new','8')">8</button>
+        <button class="num-btn" onclick="changePinInput('new','9')">9</button>
+        <button class="num-btn" style="visibility:hidden"></button>
+        <button class="num-btn" onclick="changePinInput('new','0')">0</button>
+        <button class="num-btn del" onclick="changePinDelete('new')">⌫</button>
+      </div>
+      <div style="margin-top:16px"><button class="btn secondary" onclick="closeModal('change-pin-modal')">キャンセル</button></div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimestamp, query, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCaok_-GGifT21ozKVZpbl_dSmTFJGTa3w",
+  authDomain: "chord-app-c2341.firebaseapp.com",
+  projectId: "chord-app-c2341",
+  storageBucket: "chord-app-c2341.firebasestorage.app",
+  messagingSenderId: "332835450088",
+  appId: "1:332835450088:web:7f8ef92f561925f29aad5d",
+  measurementId: "G-9CBFWPZ1X4"
+};
+const fbApp = initializeApp(firebaseConfig);
+const db = getFirestore(fbApp);
+
+// ===================== CHORD THEORY =====================
+const CHROMATIC = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const ENHARMONIC = {'Db':'C#','Eb':'D#','Fb':'E','Gb':'F#','Ab':'G#','Bb':'A#','Cb':'B'};
+function normalizeRoot(r) { return ENHARMONIC[r] || r; }
+function transposeChord(chordStr, semitones) {
+  if (semitones === 0) return chordStr;
+  const match = chordStr.match(/^([A-G][b#]?)(.*)$/);
+  if (!match) return chordStr;
+  const root = normalizeRoot(match[1]);
+  const mod = match[2];
+  const idx = CHROMATIC.indexOf(root);
+  if (idx === -1) return chordStr;
+  return CHROMATIC[((idx + semitones) % 12 + 12) % 12] + mod;
+}
+
+// ===================== PIN =====================
+const DEFAULT_PIN = '1234';
+let currentPin = localStorage.getItem('chord_pin') || DEFAULT_PIN;
+let pinBuffer = '';
+let changePinOldBuffer = '';
+let changePinNewBuffer = '';
+
+function pinInput(digit) {
+  if (pinBuffer.length >= 4) return;
+  pinBuffer += digit;
+  updateDots('dot-', pinBuffer.length);
+  if (pinBuffer.length === 4) setTimeout(checkPin, 150);
+}
+function pinDelete() { pinBuffer = pinBuffer.slice(0,-1); updateDots('dot-', pinBuffer.length); }
+function updateDots(prefix, count, error=false) {
+  for (let i=0;i<4;i++) {
+    const el = document.getElementById(prefix+i);
+    if (!el) continue;
+    el.classList.toggle('filled', i < count);
+    el.classList.toggle('error', error);
+  }
+}
+function checkPin() {
+  if (pinBuffer === currentPin) {
+    document.getElementById('lock-screen').style.display = 'none';
+    document.getElementById('main-app').style.display = 'block';
+    document.getElementById('lock-error').textContent = '';
+  } else {
+    document.getElementById('lock-error').textContent = 'PINが違います';
+    updateDots('dot-', 4, true);
+    setTimeout(() => { pinBuffer=''; updateDots('dot-',0); document.getElementById('lock-error').textContent=''; }, 800);
+  }
+}
+function lockApp() {
+  pinBuffer=''; updateDots('dot-',0);
+  document.getElementById('lock-error').textContent='';
+  document.getElementById('main-app').style.display='none';
+  document.getElementById('lock-screen').style.display='flex';
+}
+window.lockApp=lockApp; window.pinInput=pinInput; window.pinDelete=pinDelete;
+
+// ===================== STATE =====================
+let songs=[], currentSong=null, currentCapo=0, editingId=null, deleteTargetId=null;
+let sectionCount=0;
+
+// ===================== FIRESTORE =====================
+const songsCol = collection(db, 'songs');
+onSnapshot(query(songsCol, orderBy('createdAt','desc')), snap => {
+  songs = snap.docs.map(d => ({id:d.id,...d.data()}));
+  renderSongs();
+  if (currentSong) {
+    const updated = songs.find(s=>s.id===currentSong.id);
+    if (updated) { currentSong=updated; renderDetail(); }
+  }
+  document.getElementById('firebase-status').textContent='Firestore リアルタイム同期中 ✅';
+  document.getElementById('firebase-status-icon').textContent='✅';
+}, err => {
+  document.getElementById('firebase-status').textContent='エラー: '+err.message;
+  document.getElementById('firebase-status-icon').textContent='❌';
+});
+
+async function saveSong(data) { await addDoc(songsCol,{...data,createdAt:serverTimestamp()}); }
+async function updateSong(id,data) { await updateDoc(doc(db,'songs',id),{...data,updatedAt:serverTimestamp()}); }
+async function deleteSong(id) { await deleteDoc(doc(db,'songs',id)); }
+
+// ===================== RENDER SONGS =====================
+function renderSongs() {
+  const grid = document.getElementById('song-grid');
+  if (!songs.length) {
+    grid.innerHTML=`<div style="color:var(--muted);font-family:'Space Mono',monospace;font-size:13px;padding:20px">まだ曲がありません。「＋ 新しい曲」から追加してみましょう！</div>`;
+    return;
+  }
+  grid.innerHTML = songs.map(s => {
+    const allChords = [...new Set((s.sections||[]).flatMap(sec=>(sec.lines||[]).flatMap(l=>(l.chords||[]).map(c=>c.c))))];
+    const ts = s.updatedAt||s.createdAt;
+    return `
+    <div class="song-card" onclick="openSong('${s.id}')">
+      <div class="card-actions">
+        <div class="icon-btn" onclick="event.stopPropagation();openEditModalById('${s.id}')" title="編集">✏️</div>
+        <div class="icon-btn del" onclick="event.stopPropagation();openDeleteConfirmById('${s.id}')" title="削除">🗑️</div>
+      </div>
+      <h3>${esc(s.title)}</h3>
+      <div class="song-meta">
+        <span>🎵 ${esc(s.key||'?')}</span>
+        <span>⚡ ${s.bpm||0} BPM</span>
+        ${(s.capo||0)>0?`<span class="capo-badge">CAPO ${s.capo}</span>`:''}
+        ${ts?`<span>🕐 ${fmtTs(ts)}</span>`:''}
+      </div>
+      <div class="chord-preview">
+        ${allChords.slice(0,5).map(c=>`<div class="chord-chip">${esc(c)}</div>`).join('')}
+        ${allChords.length>5?`<div class="chord-chip" style="color:var(--muted)">+${allChords.length-5}</div>`:''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function fmtTs(ts) {
+  if (!ts) return '';
+  const d = ts.toDate?ts.toDate():new Date(ts);
+  const m = Math.floor((Date.now()-d)/60000);
+  if (m<1) return 'たった今';
+  if (m<60) return `${m}分前`;
+  const h = Math.floor(m/60);
+  if (h<24) return `${h}時間前`;
+  return `${Math.floor(h/24)}日前`;
+}
+
+// ===================== DETAIL =====================
+function openSong(id) {
+  currentSong=songs.find(s=>s.id===id);
+  if (!currentSong) return;
+  currentCapo=currentSong.capo||0;
+  document.getElementById('list-view').style.display='none';
+  document.getElementById('detail-view').classList.add('active');
+  renderDetail();
+}
+window.openSong=openSong;
+
+function renderDetail() {
+  const s=currentSong;
+  document.getElementById('detail-title').textContent=s.title;
+  document.getElementById('capo-display').textContent=currentCapo;
+  document.getElementById('detail-chips').innerHTML=`
+    <div class="meta-chip">Key: <strong>${esc(s.key||'?')}</strong></div>
+    <div class="meta-chip">BPM: <strong>${s.bpm||0}</strong></div>
+    ${currentCapo>0?`<div class="meta-chip" style="border-color:rgba(79,195,247,0.4)">カポ: <strong style="color:var(--blue)">${currentCapo}</strong></div>`:''}
+    <div class="meta-chip">更新: <strong>${fmtTs(s.updatedAt||s.createdAt)}</strong></div>`;
+  renderSheet();
+  let audioHtml=(s.audio||[]).map(a=>`
+    <div class="audio-item">
+      <button class="play-btn">▶</button>
+      <div class="audio-info">
+        <div class="audio-name">${esc(a.name)}</div>
+        <div class="audio-meta">${esc(a.date)} · ${esc(a.duration)}</div>
+      </div>
+    </div>`).join('');
+  if (!(s.audio||[]).length) audioHtml='<div style="color:var(--muted);font-size:13px">まだ音源はありません</div>';
+  document.getElementById('audio-content').innerHTML=audioHtml;
+
+  // Spotify
+  const spotifyLinks = s.spotifyLinks||[];
+  const spotifySec = document.getElementById('spotify-section');
+  const spotifyList = document.getElementById('spotify-list');
+  if (spotifyLinks.length) {
+    spotifySec.style.display='block';
+    spotifyList.innerHTML = spotifyLinks.map(url => {
+      const embedUrl = toSpotifyEmbed(url);
+      if (!embedUrl) return '';
+      return `<div class="spotify-item"><iframe src="${embedUrl}" height="80" frameborder="0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe></div>`;
+    }).filter(Boolean).join('');
+  } else {
+    spotifySec.style.display='none';
+    spotifyList.innerHTML='';
+  }
+}
+
+function changeCapo(delta) {
+  currentCapo=Math.max(0,Math.min(11,currentCapo+delta));
+  document.getElementById('capo-display').textContent=currentCapo;
+  renderSheet();
+}
+window.changeCapo=changeCapo;
+
+// ===================== SHEET RENDER（U-fret式）=====================
+// データ形式：line = { lyric: "ほら　あなたに...", chords: [{c:"Am", charIndex:1}, ...] }
+// charIndex = 何文字目の上にコードを置くか（0始まり）
+function renderSheet() {
+  let html='';
+  (currentSong.sections||[]).forEach(sec => {
+    html+=`<div class="sheet-section">`;
+    html+=`<div class="sheet-section-name">${esc(sec.name)}</div>`;
+    (sec.lines||[]).forEach(line => { html+=renderUfretLine(line); });
+    html+=`</div>`;
+  });
+  document.getElementById('sheet-body').innerHTML=html;
+}
+
+function renderUfretLine(line) {
+  const lyric = line.lyric||'';
+  // chordMap: charIndex → chord
+  const chordMap = {};
+  (line.chords||[]).forEach(ch => { chordMap[ch.charIndex!==undefined?ch.charIndex:ch.pos]=ch.c; });
+
+  // 文字ごとにchord-unitを作る
+  const chars = [...lyric]; // Unicode対応
+  let html=`<div class="chord-line-wrap">`;
+  chars.forEach((ch, i) => {
+    const chord = chordMap[i];
+    const displayChord = chord ? transposeChord(chord, currentCapo) : null;
+    const isTransposed = currentCapo>0 && chord;
+    const chordHtml = displayChord
+      ? `<span class="chord-name${isTransposed?' transposed':''}">${esc(displayChord)}</span>`
+      : `<span class="chord-name empty">　</span>`;
+    html+=`<span class="chord-unit">${chordHtml}<span class="chord-char">${esc(ch)}</span></span>`;
+  });
+  // 行末にコードだけある場合の処理
+  const maxChordIdx = Math.max(-1, ...Object.keys(chordMap).map(Number));
+  if (maxChordIdx >= chars.length) {
+    for (let i=chars.length; i<=maxChordIdx; i++) {
+      const chord=chordMap[i];
+      if (chord) {
+        const displayChord=transposeChord(chord,currentCapo);
+        const isTransposed=currentCapo>0;
+        html+=`<span class="chord-unit"><span class="chord-name${isTransposed?' transposed':''}">${esc(displayChord)}</span><span class="chord-char"> </span></span>`;
+      }
+    }
+  }
+  html+=`</div>`;
+  return html;
+}
+
+// ===================== SPOTIFY =====================
+function toSpotifyEmbed(url) {
+  // https://open.spotify.com/track/xxxx or /album/xxxx or /playlist/xxxx
+  const m = url.match(/open\.spotify\.com\/(track|album|playlist|episode)\/([A-Za-z0-9]+)/);
+  if (!m) return null;
+  return `https://open.spotify.com/embed/${m[1]}/${m[2]}?utm_source=generator&theme=0`;
+}
+
+function addSpotifyLink(value='') {
+  const editor = document.getElementById('spotify-links-editor');
+  const row = document.createElement('div');
+  row.className='spotify-link-row';
+  row.innerHTML=`<input class="form-input spotify-url-input" placeholder="https://open.spotify.com/track/..." value="${esc(value)}"><button class="remove-btn" onclick="this.parentElement.remove()" title="削除">✕</button>`;
+  editor.appendChild(row);
+}
+window.addSpotifyLink=addSpotifyLink;
+
+// ===================== ADD/EDIT SONG =====================
+function openAddModal() {
+  editingId=null;
+  document.getElementById('add-modal-title').textContent='新しい曲を追加';
+  document.getElementById('add-modal-submit').textContent='追加する';
+  document.getElementById('sections-editor').innerHTML='';
+  sectionCount=0;
+  ['new-title','new-key','new-bpm','new-capo'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('spotify-links-editor').innerHTML='';
+  addSection();
+  toggleModalDeleteBtn();
+  document.getElementById('add-modal').classList.add('active');
+}
+window.openAddModal=openAddModal;
+
+function openEditModal() { if(currentSong) openEditModalById(currentSong.id); }
+window.openEditModal=openEditModal;
+
+function openEditModalById(id) {
+  const s=songs.find(s=>s.id===id);
+  if(!s) return;
+  editingId=id;
+  document.getElementById('add-modal-title').textContent='曲を編集';
+  document.getElementById('add-modal-submit').textContent='保存する';
+  document.getElementById('new-title').value=s.title||'';
+  document.getElementById('new-key').value=s.key||'';
+  document.getElementById('new-bpm').value=s.bpm||'';
+  document.getElementById('new-capo').value=s.capo||0;
+  document.getElementById('sections-editor').innerHTML='';
+  document.getElementById('spotify-links-editor').innerHTML='';
+  (s.spotifyLinks||[]).forEach(url=>addSpotifyLink(url));
+  sectionCount=0;
+  (s.sections||[]).forEach(sec => {
+    sectionCount++;
+    const secId='sec-'+sectionCount;
+    const div=document.createElement('div');
+    div.className='sec-row'; div.id=secId;
+    // 編集用：歌詞とコードをテキスト形式に戻す
+    div.innerHTML=buildSectionHTML(secId, sec.name, sec.lines||[]);
+    document.getElementById('sections-editor').appendChild(div);
+  });
+  document.getElementById('add-modal').classList.add('active');
+  toggleModalDeleteBtn();
+}
+window.openEditModalById=openEditModalById;
+
+function buildSectionHTML(id, name='', lines=[]) {
+  // 既存データからテキスト形式に変換
+  const lyricsText = lines.map(l=>l.lyric||'').join('\n');
+  // コード+位置を「コード@文字番号」形式でまとめる
+  const chordAnnotations = lines.map(l=>{
+    return (l.chords||[]).map(ch=>`${ch.c}@${ch.charIndex!==undefined?ch.charIndex:ch.pos}`).join(' ');
+  }).join('\n');
+
+  return `
+    <div class="sec-row-header">
+      <input class="form-input sec-name-input" placeholder="セクション名（例：VERSE）" value="${esc(name)}">
+      <button class="remove-btn" onclick="document.getElementById('${id}').remove()">✕</button>
+    </div>
+    <div class="form-group" style="margin-bottom:10px">
+      <label class="form-label">歌詞（1行ずつ）</label>
+      <textarea class="form-input sec-lyrics" rows="4" placeholder="ほら　あなたにとって&#10;大事な人ほど　すぐそばにいるよ">${esc(lyricsText)}</textarea>
+    </div>
+    <div class="form-group" style="margin-bottom:0">
+      <label class="form-label">コード配置</label>
+      <textarea class="form-input sec-chords" rows="4" placeholder="Am@1 F@5&#10;G@3 C@8">${esc(chordAnnotations)}</textarea>
+      <div class="hint">
+        書き方：<code>コード名@文字番号</code>（0始まり）をスペース区切り、歌詞と同じ行数で入力<br>
+        例）「ほら　あなたに」の「ら」(1文字目)にAmを置くなら <code>Am@1</code><br>
+        複数コードは <code>Am@1 F@6 G@11</code> のように並べる
+      </div>
+    </div>`;
+}
+
+function addSection() {
+  sectionCount++;
+  const id='sec-'+sectionCount;
+  const div=document.createElement('div');
+  div.className='sec-row'; div.id=id;
+  div.innerHTML=buildSectionHTML(id, sectionCount===1?'VERSE':'');
+  document.getElementById('sections-editor').appendChild(div);
+}
+window.addSection=addSection;
+
+async function submitSong() {
+  const title=document.getElementById('new-title').value.trim();
+  if (!title) { showToast('曲名を入力してください','error'); return; }
+
+  const sections=[];
+  document.querySelectorAll('.sec-row').forEach(row=>{
+    const name=row.querySelector('.sec-name-input').value.trim()||'SECTION';
+    const lyricsRaw=row.querySelector('.sec-lyrics').value.split('\n');
+    const chordsRaw=row.querySelector('.sec-chords').value.split('\n');
+    const lines=lyricsRaw.map((lyric,i)=>{
+      const chordLine=(chordsRaw[i]||'').trim();
+      const chords=[];
+      if (chordLine) {
+        chordLine.split(/\s+/).forEach(token=>{
+          const m=token.match(/^([A-G][b#]?(?:m|maj|min|dim|aug|sus|add)?[0-9]*)@(\d+)$/);
+          if (m) chords.push({c:m[1],charIndex:parseInt(m[2])});
+        });
+      }
+      return {lyric, chords};
+    }).filter(l=>l.lyric.trim()||l.chords.length);
+    if (lines.length) sections.push({name,lines});
+  });
+
+  if (!sections.length) { showToast('セクションと歌詞を入力してください','error'); return; }
+
+  const spotifyLinks = [...document.querySelectorAll('.spotify-url-input')]
+    .map(el=>el.value.trim()).filter(Boolean);
+
+  const data={
+    title,
+    key:document.getElementById('new-key').value||'?',
+    bpm:parseInt(document.getElementById('new-bpm').value)||0,
+    capo:parseInt(document.getElementById('new-capo').value)||0,
+    sections, audio:[], spotifyLinks
+  };
+
+  const btn=document.getElementById('add-modal-submit');
+  btn.textContent='保存中...'; btn.disabled=true;
+  try {
+    if (editingId) {
+      await updateSong(editingId,data);
+      showToast('曲を更新しました ✅','success');
+      if (currentSong&&currentSong.id===editingId) { currentSong={...currentSong,...data}; renderDetail(); }
+    } else {
+      await saveSong(data);
+      showToast('曲を追加しました ✅','success');
+    }
+    closeModal('add-modal');
+  } catch(e) {
+    showToast('保存に失敗しました: '+e.message,'error');
+  } finally {
+    btn.textContent=editingId?'保存する':'追加する'; btn.disabled=false;
+  }
+}
+window.submitSong=submitSong;
+
+// ===================== DELETE =====================
+function openDeleteConfirm() { if(currentSong) openDeleteConfirmById(currentSong.id); }
+window.openDeleteConfirm=openDeleteConfirm;
+function openDeleteConfirmById(id) {
+  const s=songs.find(s=>s.id===id);
+  if(!s) return;
+  deleteTargetId=id;
+  document.getElementById('delete-song-name').textContent=s.title;
+  document.getElementById('delete-modal').classList.add('active');
+}
+window.openDeleteConfirmById=openDeleteConfirmById;
+async function confirmDelete() {
+  if(!deleteTargetId) return;
+  try {
+    await deleteSong(deleteTargetId);
+    showToast('削除しました','success');
+    closeModal('delete-modal');
+    if(currentSong&&currentSong.id===deleteTargetId) backToList();
+    deleteTargetId=null;
+  } catch(e) { showToast('削除に失敗しました: '+e.message,'error'); }
+}
+window.confirmDelete=confirmDelete;
+
+// ===================== CHANGE PIN =====================
+function openChangePinModal() {
+  changePinOldBuffer=''; changePinNewBuffer='';
+  document.getElementById('pin-change-step1').style.display='block';
+  document.getElementById('pin-change-step2').style.display='none';
+  updateDots('co-',0); updateDots('cn-',0);
+  document.getElementById('change-error-old').textContent='';
+  document.getElementById('change-error-new').textContent='';
+  document.getElementById('change-pin-modal').classList.add('active');
+}
+window.openChangePinModal=openChangePinModal;
+
+function changePinInput(step,digit) {
+  if (step==='old') {
+    if(changePinOldBuffer.length>=4) return;
+    changePinOldBuffer+=digit;
+    updateDots('co-',changePinOldBuffer.length);
+    if(changePinOldBuffer.length===4) setTimeout(()=>{
+      if(changePinOldBuffer===currentPin) {
+        document.getElementById('pin-change-step1').style.display='none';
+        document.getElementById('pin-change-step2').style.display='block';
+      } else {
+        document.getElementById('change-error-old').textContent='PINが違います';
+        updateDots('co-',4,true);
+        setTimeout(()=>{ changePinOldBuffer=''; updateDots('co-',0); document.getElementById('change-error-old').textContent=''; },800);
+      }
+    },150);
+  } else {
+    if(changePinNewBuffer.length>=4) return;
+    changePinNewBuffer+=digit;
+    updateDots('cn-',changePinNewBuffer.length);
+    if(changePinNewBuffer.length===4) setTimeout(()=>{
+      currentPin=changePinNewBuffer;
+      localStorage.setItem('chord_pin',currentPin);
+      showToast('PINを変更しました ✅','success');
+      closeModal('change-pin-modal');
+    },150);
+  }
+}
+window.changePinInput=changePinInput;
+function changePinDelete(step) {
+  if(step==='old'){ changePinOldBuffer=changePinOldBuffer.slice(0,-1); updateDots('co-',changePinOldBuffer.length); }
+  else { changePinNewBuffer=changePinNewBuffer.slice(0,-1); updateDots('cn-',changePinNewBuffer.length); }
+}
+window.changePinDelete=changePinDelete;
+
+// ===================== UTILS =====================
+function backToList() {
+  document.getElementById('list-view').style.display='';
+  document.getElementById('detail-view').classList.remove('active');
+}
+window.backToList=backToList;
+
+function switchTab(name,el) {
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('tab-'+name).classList.add('active');
+}
+window.switchTab=switchTab;
+
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+window.closeModal=closeModal;
+
+// 編集モーダル内の削除ボタン：新規追加時は隠す
+function toggleModalDeleteBtn() {
+  const btn = document.getElementById('modal-delete-btn');
+  btn.style.display = editingId ? 'inline-flex' : 'none';
+}
+
+// 編集モーダルから削除確認を開く
+function openDeleteFromEdit() {
+  if (!editingId) return;
+  closeModal('add-modal');
+  openDeleteConfirmById(editingId);
+}
+window.openDeleteFromEdit=openDeleteFromEdit;
+
+// ===================== BAND NAME =====================
+let bandName = localStorage.getItem('chord_band_name') || 'My Band';
+function initBandName() {
+  document.getElementById('band-name-display').textContent = bandName;
+}
+function openBandNameModal() {
+  document.getElementById('band-name-input').value = bandName;
+  document.getElementById('band-name-modal').classList.add('active');
+}
+function saveBandName() {
+  const val = document.getElementById('band-name-input').value.trim();
+  if (!val) return;
+  bandName = val;
+  localStorage.setItem('chord_band_name', bandName);
+  document.getElementById('band-name-display').textContent = bandName;
+  closeModal('band-name-modal');
+  showToast('バンド名を更新しました ✅','success');
+}
+window.openBandNameModal=openBandNameModal;
+window.saveBandName=saveBandName;
+initBandName();
+
+let toastTimer;
+function showToast(msg,type='') {
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.className='show '+type;
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>{t.className='';},2500);
+}
+
+function esc(s) {
+  if(!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+['add-modal','delete-modal','change-pin-modal','band-name-modal'].forEach(id=>{
+  document.getElementById(id).addEventListener('click',e=>{ if(e.target.id===id) closeModal(id); });
+});
+</script>
+</body>
+</html>
