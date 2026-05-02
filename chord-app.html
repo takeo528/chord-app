@@ -102,7 +102,14 @@
 
   /* DETAIL */
   .detail-view { display:none; }
-  .detail-view.active { display:block; }
+  .detail-view.active {
+    display:block;
+    animation:detailSlideUp 0.32s cubic-bezier(0.22,1,0.36,1) both;
+  }
+  @keyframes detailSlideUp {
+    from { opacity:0; transform:translateY(24px); }
+    to   { opacity:1; transform:translateY(0); }
+  }
   .back-btn { background:none; border:none; color:var(--muted); cursor:pointer; font-size:13px; display:flex; align-items:center; gap:6px; margin-bottom:16px; padding:0; transition:color 0.2s; }
   .back-btn:hover { color:var(--text); }
 
@@ -164,6 +171,10 @@
     flex-direction:column;
     align-items:flex-start;
   }
+  /* コードがある文字ユニットだけ右に少し余白 */
+  .chord-unit.has-chord {
+    margin-right:2px;
+  }
   .chord-name {
     font-family:'Space Mono',monospace;
     font-size:13px;
@@ -184,6 +195,7 @@
     line-height:1.7;
     color:var(--text);
     white-space:pre;
+    letter-spacing:0; /* デフォルトは詰める */
   }
 
   /* AUDIO */
@@ -890,7 +902,7 @@ function renderUfretLine(line) {
     const chordHtml = displayChord
       ? `<span class="chord-name${isTransposed?' transposed':''}">${esc(displayChord)}</span>`
       : `<span class="chord-name empty">　</span>`;
-    html+=`<span class="chord-unit">${chordHtml}<span class="chord-char">${esc(ch)}</span></span>`;
+    html+=`<span class="chord-unit${displayChord?' has-chord':''}">${chordHtml}<span class="chord-char">${esc(ch)}</span></span>`;
   });
   Object.entries(chordMap).forEach(([idx,c])=>{
     if (Number(idx)>=chars.length) {
