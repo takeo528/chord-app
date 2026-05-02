@@ -248,7 +248,21 @@
   .settings-label { font-size:13px; }
   .settings-desc { font-size:11px; color:var(--muted); margin-top:2px; }
 
-  /* CHANGE PIN */
+  /* TOGGLE SWITCH */
+  .toggle-wrap { display:flex; align-items:center; gap:10px; }
+  .toggle { position:relative; width:44px; height:24px; flex-shrink:0; }
+  .toggle input { opacity:0; width:0; height:0; }
+  .toggle-slider {
+    position:absolute; inset:0; background:var(--border);
+    border-radius:24px; cursor:pointer; transition:background 0.2s;
+  }
+  .toggle-slider:before {
+    content:''; position:absolute; width:18px; height:18px;
+    left:3px; top:3px; background:#fff; border-radius:50%;
+    transition:transform 0.2s;
+  }
+  .toggle input:checked + .toggle-slider { background:var(--accent); }
+  .toggle input:checked + .toggle-slider:before { transform:translateX(20px); }
   .change-pin-numpad { display:grid; grid-template-columns:repeat(3,64px); gap:8px; margin:16px auto 0; width:fit-content; }
   .change-pin-numpad .num-btn { width:64px; height:64px; font-size:20px; }
 
@@ -344,13 +358,16 @@
       </div>
     </div>
 
-    <!-- CAPO BAR シンプル版 -->
+    <!-- CAPO BAR -->
     <div class="capo-bar">
-      <div class="capo-label">🎸 カポ</div>
-      <div class="capo-stepper">
-        <button class="capo-btn" onclick="changeCapo(-1)">−</button>
-        <div class="capo-value" id="capo-display">0</div>
-        <button class="capo-btn" onclick="changeCapo(+1)">＋</button>
+      <div class="capo-bar-left" style="display:flex;align-items:center;gap:12px;flex:1">
+        <div class="capo-label">🎸 カポ</div>
+        <div class="capo-stepper">
+          <button class="capo-btn" onclick="changeCapo(-1)">−</button>
+          <div class="capo-value" id="capo-display">0</div>
+          <button class="capo-btn" onclick="changeCapo(+1)">＋</button>
+        </div>
+        <div id="capo-hint" style="font-size:11px;color:var(--muted);font-family:'Space Mono',monospace;"></div>
       </div>
     </div>
 
@@ -390,6 +407,18 @@
   <div class="settings-section">
     <div class="settings-section-title">セキュリティ</div>
     <div class="settings-row">
+      <div>
+        <div class="settings-label">PIN認証</div>
+        <div class="settings-desc">OFFにするとロック画面をスキップします</div>
+      </div>
+      <div class="toggle-wrap">
+        <label class="toggle">
+          <input type="checkbox" id="pin-toggle" onchange="togglePin(this.checked)">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+    <div class="settings-row" id="pin-change-row">
       <div>
         <div class="settings-label">PINコードを変更</div>
         <div class="settings-desc">現在の4桁PINを変更します</div>
@@ -569,9 +598,31 @@ function transposeChord(chordStr, semitones) {
 // ===================== PIN =====================
 const DEFAULT_PIN = '1234';
 let currentPin = localStorage.getItem('chord_pin') || DEFAULT_PIN;
+let pinEnabled = localStorage.getItem('chord_pin_enabled') !== 'false'; // デフォルトON
 let pinBuffer = '';
 let changePinOldBuffer = '';
 let changePinNewBuffer = '';
+
+function initPin() {
+  const toggle = document.getElementById('pin-toggle');
+  toggle.checked = pinEnabled;
+  document.getElementById('pin-change-row').style.display = pinEnabled ? '' : 'none';
+  if (pinEnabled) {
+    document.getElementById('lock-screen').style.display = 'flex';
+    document.getElementById('main-app').style.display = 'none';
+  } else {
+    document.getElementById('lock-screen').style.display = 'none';
+    document.getElementById('main-app').style.display = 'block';
+  }
+}
+
+function togglePin(enabled) {
+  pinEnabled = enabled;
+  localStorage.setItem('chord_pin_enabled', enabled);
+  document.getElementById('pin-change-row').style.display = enabled ? '' : 'none';
+  showToast(enabled ? 'PIN認証をONにしました' : 'PIN認証をOFFにしました', 'success');
+}
+window.togglePin = togglePin;
 
 function pinInput(digit) {
   if (pinBuffer.length >= 4) return;
@@ -600,12 +651,14 @@ function checkPin() {
   }
 }
 function lockApp() {
+  if (!pinEnabled) return;
   pinBuffer=''; updateDots('dot-',0);
   document.getElementById('lock-error').textContent='';
   document.getElementById('main-app').style.display='none';
   document.getElementById('lock-screen').style.display='flex';
 }
 window.lockApp=lockApp; window.pinInput=pinInput; window.pinDelete=pinDelete;
+initPin();
 
 // ===================== STATE =====================
 let songs=[], currentSong=null, currentCapo=0, editingId=null, deleteTargetId=null;
@@ -677,7 +730,8 @@ function fmtTs(ts) {
 function openSong(id) {
   currentSong=songs.find(s=>s.id===id);
   if (!currentSong) return;
-  currentCapo=currentSong.capo||0;
+  // 初期表示カポ = 曲のカポ（ギターの押さえ方がそのまま見える）
+  currentCapo = currentSong.capo||0;
   document.getElementById('list-view').style.display='none';
   document.getElementById('detail-view').classList.add('active');
   renderDetail();
@@ -687,11 +741,12 @@ window.openSong=openSong;
 function renderDetail() {
   const s=currentSong;
   document.getElementById('detail-title').textContent=s.title;
-  document.getElementById('capo-display').textContent=currentCapo;
+  updateCapoDisplay();
+  const songCapo = s.capo||0;
   document.getElementById('detail-chips').innerHTML=`
     <div class="meta-chip">Key: <strong>${esc(s.key||'?')}</strong></div>
     <div class="meta-chip">BPM: <strong>${s.bpm||0}</strong></div>
-    ${currentCapo>0?`<div class="meta-chip" style="border-color:rgba(79,195,247,0.4)">カポ: <strong style="color:var(--blue)">${currentCapo}</strong></div>`:''}
+    ${songCapo>0?`<div class="meta-chip" style="border-color:rgba(79,195,247,0.4)">曲カポ: <strong style="color:var(--blue)">${songCapo}</strong></div>`:''}
     <div class="meta-chip">更新: <strong>${fmtTs(s.updatedAt||s.createdAt)}</strong></div>`;
   renderSheet();
   let audioHtml=(s.audio||[]).map(a=>`
@@ -723,21 +778,77 @@ function renderDetail() {
 }
 
 function changeCapo(delta) {
-  currentCapo=Math.max(0,Math.min(11,currentCapo+delta));
-  document.getElementById('capo-display').textContent=currentCapo;
+  // -2 〜 +11 の範囲
+  currentCapo = Math.max(-2, Math.min(11, currentCapo + delta));
+  updateCapoDisplay();
   renderSheet();
 }
-window.changeCapo=changeCapo;
+window.changeCapo = changeCapo;
 
-// ===================== SHEET RENDER（U-fret式）=====================
-// データ形式：line = { lyric: "ほら　あなたに...", chords: [{c:"Am", charIndex:1}, ...] }
-// charIndex = 何文字目の上にコードを置くか（0始まり）
+function updateCapoDisplay() {
+  const el = document.getElementById('capo-display');
+  const hint = document.getElementById('capo-hint');
+  if (!el) return;
+  el.textContent = currentCapo;
+  const songCapo = currentSong ? (currentSong.capo||0) : 0;
+  const diff = currentCapo - songCapo;
+  // 色: 曲カポと同じ=黄(デフォルト), カポ0=青(実音), マイナス=赤, それ以外=青
+  if (currentCapo === songCapo) {
+    el.style.color = 'var(--accent)'; // ギター押さえ方（デフォルト）
+  } else if (currentCapo === 0) {
+    el.style.color = 'var(--green)'; // 実音（カポなし）
+  } else if (currentCapo < 0) {
+    el.style.color = 'var(--accent2)'; // マイナス
+  } else {
+    el.style.color = 'var(--blue)';
+  }
+  // ヒント表示
+  if (!hint) return;
+  if (currentCapo === songCapo) {
+    hint.textContent = songCapo > 0 ? `カポ${songCapo}・ギター押さえ方` : '実音';
+  } else if (currentCapo === 0) {
+    hint.textContent = '実音（ベース等）';
+  } else if (currentCapo < 0) {
+    hint.textContent = `${Math.abs(currentCapo)}半音下げ`;
+  } else {
+    hint.textContent = `カポ${currentCapo}`;
+  }
+}
+
+// ===================== BRACKET PARSER =====================
+// "[Am]ほら　[F]あなたに" → {lyric:"ほら　あなたに", chords:[{c:"Am",charIndex:0},{c:"F",charIndex:3}]}
+function parseRawLine(raw) {
+  if (!raw.trim()) return null;
+  const chords = [];
+  let lyric = '';
+  // [コード名] をすべてマッチ（コード名は何でもOK、]が来るまで）
+  const re = /\[([^\]]+)\]|([^\[]+)/g;
+  let pending = []; // まだ歌詞文字数が確定していないコード群
+  let match;
+  while ((match = re.exec(raw)) !== null) {
+    if (match[1] !== undefined) {
+      // コードトークン
+      pending.push({ c: match[1], charIndex: [...lyric].length });
+      chords.push({ c: match[1], charIndex: [...lyric].length });
+    } else {
+      // 歌詞テキスト
+      lyric += match[2];
+    }
+  }
+  return { lyric, chords };
+}
+
+// ===================== SHEET RENDER（ブラケット記法）=====================
 function renderSheet() {
   let html='';
   (currentSong.sections||[]).forEach(sec => {
     html+=`<div class="sheet-section">`;
     html+=`<div class="sheet-section-name">${esc(sec.name)}</div>`;
-    (sec.lines||[]).forEach(line => { html+=renderUfretLine(line); });
+    if ((sec.lines||[]).length) {
+      sec.lines.forEach(line => { html+=renderUfretLine(line); });
+    } else {
+      html+=`<div style="color:var(--muted);font-size:12px;font-family:'Space Mono',monospace;padding:4px 0">（未入力）</div>`;
+    }
     html+=`</div>`;
   });
   document.getElementById('sheet-body').innerHTML=html;
@@ -745,34 +856,48 @@ function renderSheet() {
 
 function renderUfretLine(line) {
   const lyric = line.lyric||'';
-  // chordMap: charIndex → chord
   const chordMap = {};
-  (line.chords||[]).forEach(ch => { chordMap[ch.charIndex!==undefined?ch.charIndex:ch.pos]=ch.c; });
+  (line.chords||[]).forEach(ch => {
+    const idx = ch.charIndex!==undefined ? ch.charIndex : ch.pos;
+    chordMap[idx] = ch.c;
+  });
 
-  // 文字ごとにchord-unitを作る
-  const chars = [...lyric]; // Unicode対応
+  // カポを上げると同じ押さえ方でも音が上がる
+  // → 同じ音を出すためのコード表記は下がる
+  // diff = songCapo - currentCapo
+  const songCapo = currentSong ? (currentSong.capo||0) : 0;
+  const diff = songCapo - currentCapo;
+  const toDisplay = (c) => transposeChord(c, diff);
+  const isTransposed = diff !== 0;
+
+  const chars = [...lyric];
+  if (!chars.length) {
+    const sortedChords = Object.entries(chordMap).sort((a,b)=>Number(a[0])-Number(b[0]));
+    if (!sortedChords.length) return '';
+    let html=`<div class="chord-line-wrap">`;
+    sortedChords.forEach(([,c])=>{
+      const disp = toDisplay(c);
+      html+=`<span class="chord-unit"><span class="chord-name${isTransposed?' transposed':''}">${esc(disp)}</span><span class="chord-char">　</span></span>`;
+    });
+    html+=`</div>`;
+    return html;
+  }
+
   let html=`<div class="chord-line-wrap">`;
   chars.forEach((ch, i) => {
     const chord = chordMap[i];
-    const displayChord = chord ? transposeChord(chord, currentCapo) : null;
-    const isTransposed = currentCapo>0 && chord;
+    const displayChord = chord ? toDisplay(chord) : null;
     const chordHtml = displayChord
       ? `<span class="chord-name${isTransposed?' transposed':''}">${esc(displayChord)}</span>`
       : `<span class="chord-name empty">　</span>`;
     html+=`<span class="chord-unit">${chordHtml}<span class="chord-char">${esc(ch)}</span></span>`;
   });
-  // 行末にコードだけある場合の処理
-  const maxChordIdx = Math.max(-1, ...Object.keys(chordMap).map(Number));
-  if (maxChordIdx >= chars.length) {
-    for (let i=chars.length; i<=maxChordIdx; i++) {
-      const chord=chordMap[i];
-      if (chord) {
-        const displayChord=transposeChord(chord,currentCapo);
-        const isTransposed=currentCapo>0;
-        html+=`<span class="chord-unit"><span class="chord-name${isTransposed?' transposed':''}">${esc(displayChord)}</span><span class="chord-char"> </span></span>`;
-      }
+  Object.entries(chordMap).forEach(([idx,c])=>{
+    if (Number(idx)>=chars.length) {
+      const disp=toDisplay(c);
+      html+=`<span class="chord-unit"><span class="chord-name${isTransposed?' transposed':''}">${esc(disp)}</span><span class="chord-char"> </span></span>`;
     }
-  }
+  });
   html+=`</div>`;
   return html;
 }
@@ -841,32 +966,68 @@ function openEditModalById(id) {
 window.openEditModalById=openEditModalById;
 
 function buildSectionHTML(id, name='', lines=[]) {
-  // 既存データからテキスト形式に変換
-  const lyricsText = lines.map(l=>l.lyric||'').join('\n');
-  // コード+位置を「コード@文字番号」形式でまとめる
-  const chordAnnotations = lines.map(l=>{
-    return (l.chords||[]).map(ch=>`${ch.c}@${ch.charIndex!==undefined?ch.charIndex:ch.pos}`).join(' ');
-  }).join('\n');
+  const raw = lines.map(l => {
+    if (!l.lyric && !(l.chords||[]).length) return '';
+    const chords = [...(l.chords||[])].sort((a,b)=>(a.charIndex??a.pos)-(b.charIndex??b.pos));
+    const chars = [...(l.lyric||'')];
+    let result = '';
+    let ci = 0;
+    for (let i=0; i<=chars.length; i++) {
+      while (ci < chords.length && (chords[ci].charIndex??chords[ci].pos) === i) {
+        result += `[${chords[ci].c}]`;
+        ci++;
+      }
+      if (i < chars.length) result += chars[i];
+    }
+    return result;
+  }).filter(Boolean).join('\n');
 
   return `
     <div class="sec-row-header">
+      <div style="display:flex;gap:4px;flex-shrink:0">
+        <button class="icon-btn" onclick="moveSec('${id}',-1)" title="上へ">↑</button>
+        <button class="icon-btn" onclick="moveSec('${id}',+1)" title="下へ">↓</button>
+      </div>
       <input class="form-input sec-name-input" placeholder="セクション名（例：VERSE）" value="${esc(name)}">
       <button class="remove-btn" onclick="document.getElementById('${id}').remove()">✕</button>
     </div>
-    <div class="form-group" style="margin-bottom:10px">
-      <label class="form-label">歌詞（1行ずつ）</label>
-      <textarea class="form-input sec-lyrics" rows="4" placeholder="ほら　あなたにとって&#10;大事な人ほど　すぐそばにいるよ">${esc(lyricsText)}</textarea>
-    </div>
     <div class="form-group" style="margin-bottom:0">
-      <label class="form-label">コード配置</label>
-      <textarea class="form-input sec-chords" rows="4" placeholder="Am@1 F@5&#10;G@3 C@8">${esc(chordAnnotations)}</textarea>
-      <div class="hint">
-        書き方：<code>コード名@文字番号</code>（0始まり）をスペース区切り、歌詞と同じ行数で入力<br>
-        例）「ほら　あなたに」の「ら」(1文字目)にAmを置くなら <code>Am@1</code><br>
-        複数コードは <code>Am@1 F@6 G@11</code> のように並べる
-      </div>
-    </div>`;
+      <label class="form-label">歌詞＋コード</label>
+      <textarea class="form-input sec-raw" rows="5" placeholder="[Am]ほら　[F]あなたにとって&#10;[Dm]大事な[G]人ほど　すぐそばにいるよ&#10;[C][G][Am][Em]（コードのみの行もOK）">${esc(raw)}</textarea>
+      <div class="hint">コードを入れたい文字の直前に <code>[コード名]</code> を書く。歌詞なしの行はイントロ・間奏として表示。</div>
+    </div>
+    <button class="add-sec-btn" style="margin-top:10px" onclick="addSectionAfter('${id}')">＋ この下にセクションを追加</button>`;
 }
+
+function moveSec(id, dir) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const parent = el.parentElement;
+  // sec-rowだけを対象に（add-sec-btnは含まない）
+  const rows = [...parent.querySelectorAll(':scope > .sec-row')];
+  const idx = rows.indexOf(el);
+  if (dir === -1 && idx > 0) {
+    parent.insertBefore(el, rows[idx-1]);
+  } else if (dir === 1 && idx < rows.length-1) {
+    rows[idx+1].insertAdjacentElement('afterend', el);
+  }
+}
+window.moveSec = moveSec;
+
+function addSectionAfter(afterId) {
+  sectionCount++;
+  const id='sec-'+sectionCount;
+  const div=document.createElement('div');
+  div.className='sec-row'; div.id=id;
+  div.innerHTML=buildSectionHTML(id,'');
+  const afterEl = document.getElementById(afterId);
+  if (afterEl) {
+    afterEl.insertAdjacentElement('afterend', div);
+  } else {
+    document.getElementById('sections-editor').appendChild(div);
+  }
+}
+window.addSectionAfter = addSectionAfter;
 
 function addSection() {
   sectionCount++;
@@ -884,24 +1045,14 @@ async function submitSong() {
 
   const sections=[];
   document.querySelectorAll('.sec-row').forEach(row=>{
-    const name=row.querySelector('.sec-name-input').value.trim()||'SECTION';
-    const lyricsRaw=row.querySelector('.sec-lyrics').value.split('\n');
-    const chordsRaw=row.querySelector('.sec-chords').value.split('\n');
-    const lines=lyricsRaw.map((lyric,i)=>{
-      const chordLine=(chordsRaw[i]||'').trim();
-      const chords=[];
-      if (chordLine) {
-        chordLine.split(/\s+/).forEach(token=>{
-          const m=token.match(/^([A-G][b#]?(?:m|maj|min|dim|aug|sus|add)?[0-9]*)@(\d+)$/);
-          if (m) chords.push({c:m[1],charIndex:parseInt(m[2])});
-        });
-      }
-      return {lyric, chords};
-    }).filter(l=>l.lyric.trim()||l.chords.length);
-    if (lines.length) sections.push({name,lines});
+    const name=row.querySelector('.sec-name-input').value.trim();
+    const rawText=row.querySelector('.sec-raw').value;
+    const lines = rawText.split('\n').map(rawLine => parseRawLine(rawLine)).filter(l=>l!==null);
+    // 名前もしくはlinesがあれば保存（空セクションも名前があれば残す）
+    if (name || lines.length) sections.push({name:name||'SECTION', lines});
   });
 
-  if (!sections.length) { showToast('セクションと歌詞を入力してください','error'); return; }
+  if (!sections.length) { showToast('セクションを追加してください','error'); return; }
 
   const spotifyLinks = [...document.querySelectorAll('.spotify-url-input')]
     .map(el=>el.value.trim()).filter(Boolean);
